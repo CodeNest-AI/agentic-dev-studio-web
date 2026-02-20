@@ -51,6 +51,8 @@ export default function Navbar() {
           {/* Mobile hamburger */}
           {isMobile && (
             <Pressable
+              testID="hamburger"
+              accessibilityRole="button"
               onPress={() => setMenuOpen((o) => !o)}
               style={styles.hamburger}
             >
