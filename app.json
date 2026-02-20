@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "AGENTIC DEV STUDIO",
+    "slug": "agentic-dev-studio-web",
+    "version": "1.0.0",
+    "scheme": "agenticdevstudio",
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
