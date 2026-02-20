@@ -1,0 +1,108 @@
+################################################################################
+# Cloud Build — Agentic Dev Studio Web
+#
+# Stages:
+#   1. install   → npm ci
+#   2. test      → jest (87 tests)
+#   3. build     → expo export --platform web  →  dist/
+#   4. deploy    → gsutil rsync dist/ → GCS bucket
+#
+# Required substitutions (set in Cloud Build trigger or CLI):
+#   _BUCKET_NAME    e.g. gs://agentic-dev-studio-web-prod
+#   _ENV            e.g. production | staging
+#
+# Optional substitutions (have defaults below):
+#   _NODE_VERSION   e.g. 22 (default)
+#   _REGION         e.g. europe-west1
+#
+# One-time setup:
+#   gcloud storage buckets create $_BUCKET_NAME --location=$_REGION
+#   gcloud storage buckets update $_BUCKET_NAME --web-main-page-suffix=index.html --web-error-page=index.html
+#   gcloud storage buckets add-iam-policy-binding $_BUCKET_NAME --member=allUsers --role=roles/storage.objectViewer
+################################################################################
+
+substitutions:
+  _NODE_VERSION: "22"
+  _REGION: "europe-west1"
+  _ENV: "production"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+
+steps:
+  # ── 1. Install dependencies ─────────────────────────────────────────────────
+  - id: install
+    name: node:${_NODE_VERSION}
+    entrypoint: npm
+    args: [ci, --legacy-peer-deps]
+    dir: .
+    env:
+      - NODE_ENV=development   # devDeps needed for build
+
+  # ── 2. Run tests ─────────────────────────────────────────────────────────────
+  - id: test
+    name: node:${_NODE_VERSION}
+    entrypoint: npm
+    args: [test, --, --no-coverage, --ci, --forceExit]
+    dir: .
+    waitFor: [install]
+    env:
+      - NODE_ENV=test
+      - CI=true
+
+  # ── 3. Export static web build ───────────────────────────────────────────────
+  - id: build
+    name: node:${_NODE_VERSION}
+    entrypoint: npx
+    args: [expo, export, --platform, web]
+    dir: .
+    waitFor: [test]
+    env:
+      - NODE_ENV=production
+      - EXPO_NO_TELEMETRY=1
+
+  # ── 4a. Upload hashed assets (immutable, 1 year cache) ───────────────────────
+  - id: deploy-assets
+    name: gcr.io/cloud-builders/gsutil
+    args:
+      - -m
+      - rsync
+      - -r
+      - -c
+      - -d
+      - -x
+      - ^(?!.*\/_expo\/)  # only _expo/static/ (hashed files)
+      - dist/_expo/
+      - ${_BUCKET_NAME}/_expo/
+    waitFor: [build]
+
+  # ── 4b. Upload HTML + root files (no-cache, always revalidate) ───────────────
+  - id: deploy-html
+    name: gcr.io/cloud-builders/gsutil
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        # Upload HTML files with no-store so CDN always serves fresh
+        gsutil -m -h "Cache-Control:no-store" cp -r dist/*.html ${_BUCKET_NAME}/
+        # Upload metadata files
+        gsutil -m cp -r dist/metadata.json ${_BUCKET_NAME}/ 2>/dev/null || true
+    waitFor: [build]
+
+  # ── 4c. Set immutable cache on hashed JS/CSS assets ─────────────────────────
+  - id: set-asset-cache
+    name: gcr.io/cloud-builders/gsutil
+    args:
+      - -m
+      - setmeta
+      - -h
+      - Cache-Control:public, max-age=31536000, immutable
+      - -r
+      - ${_BUCKET_NAME}/_expo/
+    waitFor: [deploy-assets]
+
+tags:
+  - agentic-dev-studio
+  - web
+  - ${_ENV}
