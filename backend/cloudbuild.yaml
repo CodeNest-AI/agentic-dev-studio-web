@@ -1,0 +1,93 @@
+# ─── ADS Backend — Cloud Build + Cloud Run ───────────────────────────────────
+#
+# Pre-requisites (run once):
+#
+# 1. Create Cloud SQL (PostgreSQL 17) instance:
+#    gcloud sql instances create ads-db \
+#      --database-version=POSTGRES_17 --tier=db-f1-micro \
+#      --region=europe-west3 --project=oneline-474118
+#    gcloud sql databases create ads --instance=ads-db --project=oneline-474118
+#
+# 2. Store secrets in Secret Manager:
+#    echo -n "<password>" | gcloud secrets create ADS_PSQL_PASSWORD --data-file=- --project=oneline-474118
+#    echo -n "ads_user"   | gcloud secrets create ADS_PSQL_USER     --data-file=- --project=oneline-474118
+#    echo -n "<32-byte-base64-secret>" | gcloud secrets create ADS_JWT_SECRET --data-file=- --project=oneline-474118
+#
+# 3. Create Cloud SQL user:
+#    gcloud sql users create ads_user --instance=ads-db --password=<same-as-secret> --project=oneline-474118
+#
+# 4. Grant Cloud Build SA secret access + Cloud SQL client role:
+#    gcloud projects add-iam-policy-binding oneline-474118 \
+#      --member="serviceAccount:<BUILD_SA>@cloudbuild.gserviceaccount.com" \
+#      --role="roles/secretmanager.secretAccessor"
+#    gcloud projects add-iam-policy-binding oneline-474118 \
+#      --member="serviceAccount:<RUN_SA>@developer.gserviceaccount.com" \
+#      --role="roles/cloudsql.client"
+#
+# 5. Create Artifact Registry repo (if not already done):
+#    gcloud artifacts repositories create ads \
+#      --repository-format=docker --location=europe-west1 --project=oneline-474118
+#
+# 6. Create Cloud Build trigger: dir=backend/, branch=main, this file.
+# ─────────────────────────────────────────────────────────────────────────────
+
+steps:
+  # ── 1. Build Docker image ─────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-build'
+    dir: '.'   # relative to backend/
+    args:
+      - build
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api:$COMMIT_SHA'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api:latest'
+      - '.'
+
+  # ── 2. Push image ─────────────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'docker-push'
+    waitFor: ['docker-build']
+    args:
+      - push
+      - '--all-tags'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api'
+
+  # ── 3. Deploy to Cloud Run ────────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'cloud-run-deploy'
+    waitFor: ['docker-push']
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        PSQL_PASS=$(gcloud secrets versions access latest --secret=ADS_PSQL_PASSWORD --project=$PROJECT_ID)
+        PSQL_USER=$(gcloud secrets versions access latest --secret=ADS_PSQL_USER     --project=$PROJECT_ID)
+        JWT_SECRET=$(gcloud secrets versions access latest --secret=ADS_JWT_SECRET   --project=$PROJECT_ID)
+
+        gcloud run deploy ads-api \
+          --image=europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api:$COMMIT_SHA \
+          --region=europe-west1 \
+          --platform=managed \
+          --no-allow-unauthenticated \
+          --port=8081 \
+          --min-instances=0 \
+          --max-instances=5 \
+          --memory=512Mi \
+          --cpu=1 \
+          --add-cloudsql-instances=oneline-474118:europe-west3:ads-db \
+          --set-env-vars="JDBC_URL=jdbc:postgresql:///ads?socketFactory=com.google.cloud.sql.postgres.SocketFactory&cloudSqlInstance=oneline-474118:europe-west3:ads-db" \
+          --set-env-vars="PSQL_USER=$PSQL_USER" \
+          --set-env-vars="PSQL_PASSWORD=$PSQL_PASS" \
+          --set-env-vars="JWT_SECRET=$JWT_SECRET" \
+          --set-env-vars="GOOGLE_CLIENT_ID=442555628469-xxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" \
+          --set-env-vars="CORS_ALLOWED_ORIGINS=https://ads-web-<hash>-ew.a.run.app" \
+          --project=$PROJECT_ID
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api:$COMMIT_SHA'
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/ads/ads-api:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8

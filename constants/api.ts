@@ -277,6 +277,15 @@ export const api = {
     deleteComment: (id: string) => del<void>(`/community/comments/${id}`, true),
   },
 
+  users: {
+    me: () => get<User>('/users/me', true),
+
+    update: (data: { firstName?: string; lastName?: string; bio?: string; avatarUrl?: string }) =>
+      put<User>('/users/me', data, true),
+
+    public: (id: string) => get<User>(`/users/${id}`),
+  },
+
   forum: {
     categories: () => get<ForumCategory[]>('/forum/categories'),
 

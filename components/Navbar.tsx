@@ -10,7 +10,14 @@ import { useRouter } from 'expo-router';
 import { Colors, Fonts, Layout, Spacing } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 
-const NAV_LINKS: { label: string; href: string }[] = [
+const PUBLIC_LINKS: { label: string; href: string }[] = [
+  { label: 'Courses',   href: '/courses' },
+  { label: 'Community', href: '/community' },
+  { label: 'Forum',     href: '/forum' },
+];
+
+const AUTH_LINKS: { label: string; href: string }[] = [
+  { label: 'Dashboard', href: '/dashboard' },
   { label: 'Courses',   href: '/courses' },
   { label: 'Community', href: '/community' },
   { label: 'Forum',     href: '/forum' },
@@ -23,14 +30,9 @@ export default function Navbar() {
   const [ctaHover, setCtaHover] = useState(false);
   const router = useRouter();
   const { isAuthenticated, user, logout } = useAuth();
+  const navLinks = isAuthenticated ? AUTH_LINKS : PUBLIC_LINKS;
 
-  const handleCta = () => {
-    if (isAuthenticated) {
-      logout();
-    } else {
-      router.push('/auth/login' as any);
-    }
-  };
+  const handleSignOut = () => { logout(); router.push('/' as any); };
 
   return (
     <View style={styles.wrapper}>
@@ -46,7 +48,7 @@ export default function Navbar() {
         {/* Desktop Nav */}
         {!isMobile && (
           <View style={styles.navLinks}>
-            {NAV_LINKS.map((link) => (
+            {navLinks.map((link) => (
               <NavLink key={link.label} label={link.label} href={link.href} />
             ))}
           </View>
@@ -54,23 +56,35 @@ export default function Navbar() {
 
         {/* CTA / Auth */}
         <View style={styles.ctaRow}>
-          {!isMobile && isAuthenticated && (
-            <Text style={styles.greeting}>
-              {user?.firstName}
-            </Text>
-          )}
-          {!isMobile && (
+          {!isMobile && isAuthenticated ? (
+            <>
+              <Pressable onPress={() => router.push('/profile' as any)} style={styles.profileBtn}>
+                <View style={styles.avatarCircle}>
+                  <Text style={styles.avatarInitial}>
+                    {(user?.firstName?.[0] ?? '?').toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.greeting}>{user?.firstName}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.ctaButton, styles.ctaOutline, ctaHover && styles.ctaOutlineHover]}
+                onHoverIn={() => setCtaHover(true)}
+                onHoverOut={() => setCtaHover(false)}
+                onPress={handleSignOut}
+              >
+                <Text style={styles.ctaOutlineText}>Sign Out</Text>
+              </Pressable>
+            </>
+          ) : !isMobile ? (
             <Pressable
               style={[styles.ctaButton, ctaHover && styles.ctaButtonHover]}
               onHoverIn={() => setCtaHover(true)}
               onHoverOut={() => setCtaHover(false)}
-              onPress={handleCta}
+              onPress={() => router.push('/auth/login' as any)}
             >
-              <Text style={styles.ctaText}>
-                {isAuthenticated ? 'Sign Out' : 'Get Started'}
-              </Text>
+              <Text style={styles.ctaText}>Get Started</Text>
             </Pressable>
-          )}
+          ) : null}
 
           {/* Mobile hamburger */}
           {isMobile && (
@@ -91,16 +105,25 @@ export default function Navbar() {
       {/* Mobile menu */}
       {isMobile && menuOpen && (
         <View style={styles.mobileMenu}>
-          {NAV_LINKS.map((link) => (
+          {navLinks.map((link) => (
             <Pressable key={link.label} onPress={() => { router.push(link.href as any); setMenuOpen(false); }}>
               <Text style={styles.mobileLink}>{link.label}</Text>
             </Pressable>
           ))}
-          <Pressable style={styles.ctaButton} onPress={() => { handleCta(); setMenuOpen(false); }}>
-            <Text style={styles.ctaText}>
-              {isAuthenticated ? 'Sign Out' : 'Get Started'}
-            </Text>
-          </Pressable>
+          {isAuthenticated ? (
+            <>
+              <Pressable onPress={() => { router.push('/profile' as any); setMenuOpen(false); }}>
+                <Text style={styles.mobileLink}>Profile</Text>
+              </Pressable>
+              <Pressable style={[styles.ctaButton, styles.ctaOutline]} onPress={() => { handleSignOut(); setMenuOpen(false); }}>
+                <Text style={styles.ctaOutlineText}>Sign Out</Text>
+              </Pressable>
+            </>
+          ) : (
+            <Pressable style={styles.ctaButton} onPress={() => { router.push('/auth/login' as any); setMenuOpen(false); }}>
+              <Text style={styles.ctaText}>Get Started</Text>
+            </Pressable>
+          )}
         </View>
       )}
     </View>
@@ -193,6 +216,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
   },
+  profileBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer' as any,
+  },
+  avatarCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#06D6F022',
+    borderWidth: 1.5,
+    borderColor: Colors.cyan,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarInitial: {
+    color: Colors.cyan,
+    fontSize: 13,
+    fontWeight: Fonts.weights.bold,
+  },
   greeting: {
     color: Colors.textMuted,
     fontSize: Fonts.sizes.sm,
@@ -208,6 +252,20 @@ const styles = StyleSheet.create({
   },
   ctaText: {
     color: Colors.black,
+    fontSize: Fonts.sizes.sm,
+    fontWeight: Fonts.weights.bold,
+    letterSpacing: 0.5,
+  },
+  ctaOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+  ctaOutlineHover: {
+    borderColor: '#555',
+  },
+  ctaOutlineText: {
+    color: Colors.textMuted,
     fontSize: Fonts.sizes.sm,
     fontWeight: Fonts.weights.bold,
     letterSpacing: 0.5,

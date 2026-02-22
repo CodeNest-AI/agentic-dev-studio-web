@@ -53,6 +53,8 @@ public class SecurityConfig {
                 // Forum & Community — public read
                 .requestMatchers(HttpMethod.GET, "/api/forum/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/community/**").permitAll()
+                // Users — public profile lookup by ID, protected self endpoints
+                .requestMatchers(HttpMethod.GET, "/api/users/{id}").permitAll()
                 // Everything else requires auth
                 .anyRequest().authenticated()
             )
