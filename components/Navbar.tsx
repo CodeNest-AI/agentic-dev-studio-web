@@ -6,45 +6,69 @@ import {
   StyleSheet,
   useWindowDimensions,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Colors, Fonts, Layout, Spacing } from '@/constants/theme';
+import { useAuth } from '@/context/AuthContext';
 
-const NAV_LINKS = ['Courses', 'Features', 'Community', 'About'];
+const NAV_LINKS: { label: string; href: string }[] = [
+  { label: 'Courses',   href: '/courses' },
+  { label: 'Community', href: '/community' },
+  { label: 'Forum',     href: '/forum' },
+];
 
 export default function Navbar() {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const [menuOpen, setMenuOpen] = useState(false);
   const [ctaHover, setCtaHover] = useState(false);
+  const router = useRouter();
+  const { isAuthenticated, user, logout } = useAuth();
+
+  const handleCta = () => {
+    if (isAuthenticated) {
+      logout();
+    } else {
+      router.push('/auth/login' as any);
+    }
+  };
 
   return (
     <View style={styles.wrapper}>
       <View style={[styles.inner, { maxWidth: Layout.maxWidth }]}>
         {/* Logo */}
-        <View style={styles.logoRow}>
+        <Pressable style={styles.logoRow} onPress={() => router.push('/' as any)}>
           <View style={styles.logoMark} />
           <Text style={styles.logoText}>AGENTIC</Text>
           <Text style={styles.logoDot}>·</Text>
           <Text style={styles.logoSub}>DEV STUDIO</Text>
-        </View>
+        </Pressable>
 
         {/* Desktop Nav */}
         {!isMobile && (
           <View style={styles.navLinks}>
             {NAV_LINKS.map((link) => (
-              <NavLink key={link} label={link} />
+              <NavLink key={link.label} label={link.label} href={link.href} />
             ))}
           </View>
         )}
 
-        {/* CTA */}
+        {/* CTA / Auth */}
         <View style={styles.ctaRow}>
+          {!isMobile && isAuthenticated && (
+            <Text style={styles.greeting}>
+              {user?.firstName}
+            </Text>
+          )}
           {!isMobile && (
             <Pressable
               style={[styles.ctaButton, ctaHover && styles.ctaButtonHover]}
               onHoverIn={() => setCtaHover(true)}
               onHoverOut={() => setCtaHover(false)}
+              onPress={handleCta}
             >
-              <Text style={styles.ctaText}>Get Started</Text>
+              <Text style={styles.ctaText}>
+                {isAuthenticated ? 'Sign Out' : 'Get Started'}
+              </Text>
             </Pressable>
           )}
 
@@ -68,12 +92,14 @@ export default function Navbar() {
       {isMobile && menuOpen && (
         <View style={styles.mobileMenu}>
           {NAV_LINKS.map((link) => (
-            <Text key={link} style={styles.mobileLink}>
-              {link}
-            </Text>
+            <Pressable key={link.label} onPress={() => { router.push(link.href as any); setMenuOpen(false); }}>
+              <Text style={styles.mobileLink}>{link.label}</Text>
+            </Pressable>
           ))}
-          <Pressable style={styles.ctaButton}>
-            <Text style={styles.ctaText}>Get Started</Text>
+          <Pressable style={styles.ctaButton} onPress={() => { handleCta(); setMenuOpen(false); }}>
+            <Text style={styles.ctaText}>
+              {isAuthenticated ? 'Sign Out' : 'Get Started'}
+            </Text>
           </Pressable>
         </View>
       )}
@@ -81,12 +107,14 @@ export default function Navbar() {
   );
 }
 
-function NavLink({ label }: { label: string }) {
+function NavLink({ label, href }: { label: string; href: string }) {
   const [hovered, setHovered] = useState(false);
+  const router = useRouter();
   return (
     <Pressable
       onHoverIn={() => setHovered(true)}
       onHoverOut={() => setHovered(false)}
+      onPress={() => router.push(href as any)}
     >
       <Text style={[styles.navLink, hovered && styles.navLinkHover]}>
         {label}
@@ -120,6 +148,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    cursor: 'pointer' as any,
   },
   logoMark: {
     width: 10,
@@ -162,6 +191,11 @@ const styles = StyleSheet.create({
   ctaRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: Spacing.md,
+  },
+  greeting: {
+    color: Colors.textMuted,
+    fontSize: Fonts.sizes.sm,
   },
   ctaButton: {
     backgroundColor: Colors.cyan,
